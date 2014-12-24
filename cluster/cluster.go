@@ -20,12 +20,14 @@ type Cluster struct {
 	tlsConfig     *tls.Config
 	eventHandlers []EventHandler
 	nodes         map[string]*Node
+	disc          discovery.DiscoveryService
 }
 
-func NewCluster(tlsConfig *tls.Config) *Cluster {
+func NewCluster(tlsConfig *tls.Config, disc discovery.DiscoveryService) *Cluster {
 	return &Cluster{
 		tlsConfig: tlsConfig,
 		nodes:     make(map[string]*Node),
+		disc:      disc,
 	}
 }
 
@@ -54,6 +56,33 @@ func (c *Cluster) AddNode(n *Node) error {
 
 	c.nodes[n.ID] = n
 	return n.Events(c)
+}
+
+func (c *Cluster) RemoveNode(addr string) {
+	var (
+		n *Node
+	)
+	c.Lock()
+	defer c.Unlock()
+	if !strings.HasPrefix(addr, "http://") {
+		addr = "http://" + addr
+	}
+
+	n = c.Node(addr)
+	if n == nil {
+		log.Infof("node %s not found", addr)
+		return
+	}
+	n.Quit()
+	delete(c.nodes, n.ID)
+	if c.disc != nil {
+		if d, ok := c.disc.(discovery.Deregisterer); ok {
+			err := d.Deregister(n.Addr)
+			if err != nil {
+				log.Error(err)
+			}
+		}
+	}
 }
 
 func (c *Cluster) UpdateNodes(nodes []*discovery.Node) {

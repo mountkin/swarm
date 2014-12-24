@@ -33,6 +33,10 @@ type DiscoveryService interface {
 	Register(string) error
 }
 
+type Deregisterer interface {
+	Deregister(addr string) error
+}
+
 var (
 	discoveries       map[string]DiscoveryService
 	ErrNotSupported   = errors.New("discovery service not supported")

@@ -28,6 +28,7 @@ func NewNode(addr string) *Node {
 		ch:         make(chan bool),
 		containers: make(map[string]*Container),
 		healthy:    true,
+		quit:       make(chan bool),
 	}
 	return e
 }
@@ -48,6 +49,7 @@ type Node struct {
 	client       dockerclient.Client
 	eventHandler EventHandler
 	healthy      bool
+	quit         chan bool
 }
 
 // Connect will initialize a connection to the Docker daemon running on the
@@ -214,6 +216,9 @@ func (n *Node) refreshLoop() {
 			err = n.refreshContainers()
 		case <-time.After(stateRefreshPeriod):
 			err = n.refreshContainers()
+		case <-n.quit:
+			log.Debugf("Node %s removed.", n.Addr)
+			return
 		}
 
 		if err != nil {
@@ -395,4 +400,8 @@ func (n *Node) CleanupContainers() {
 	n.Lock()
 	n.containers = make(map[string]*Container)
 	n.Unlock()
+}
+
+func (n *Node) Quit() {
+	n.quit <- true
 }

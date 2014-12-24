@@ -9,7 +9,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
 	"github.com/docker/swarm/api"
-	"github.com/docker/swarm/cluster"
+	libcluster "github.com/docker/swarm/cluster"
 	"github.com/docker/swarm/discovery"
 	"github.com/docker/swarm/scheduler"
 	"github.com/docker/swarm/scheduler/filter"
@@ -19,7 +19,7 @@ import (
 type logHandler struct {
 }
 
-func (h *logHandler) Handle(e *cluster.Event) error {
+func (h *logHandler) Handle(e *libcluster.Event) error {
 	log.Printf("event -> status: %q from: %q id: %q node: %q", e.Status, e.From, e.Id, e.Node.Name)
 	return nil
 }
@@ -57,6 +57,7 @@ func manage(c *cli.Context) {
 	var (
 		tlsConfig *tls.Config = nil
 		err       error
+		cluster   *libcluster.Cluster
 	)
 
 	// If either --tls or --tlsverify are specified, load the certificates.
@@ -71,32 +72,31 @@ func manage(c *cli.Context) {
 		}
 	}
 
-	cluster := cluster.NewCluster(tlsConfig)
-	cluster.Events(&logHandler{})
-
-	go func() {
-		if c.String("discovery") != "" {
-			d, err := discovery.New(c.String("discovery"), c.Int("heartbeat"))
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			nodes, err := d.Fetch()
-			if err != nil {
-				log.Fatal(err)
-
-			}
-			cluster.UpdateNodes(nodes)
-
-			go d.Watch(cluster.UpdateNodes)
-		} else {
-			var nodes []*discovery.Node
-			for _, arg := range c.Args() {
-				nodes = append(nodes, discovery.NewNode(arg))
-			}
-			cluster.UpdateNodes(nodes)
+	if c.String("discovery") != "" {
+		d, err := discovery.New(c.String("discovery"), c.Int("heartbeat"))
+		if err != nil {
+			log.Fatal(err)
 		}
-	}()
+		cluster = libcluster.NewCluster(tlsConfig, d)
+		cluster.Events(&logHandler{})
+
+		nodes, err := d.Fetch()
+		if err != nil {
+			log.Fatal(err)
+
+		}
+		cluster.UpdateNodes(nodes)
+
+		go d.Watch(cluster.UpdateNodes)
+	} else {
+		cluster = libcluster.NewCluster(tlsConfig, nil)
+		cluster.Events(&logHandler{})
+		var nodes []*discovery.Node
+		for _, arg := range c.Args() {
+			nodes = append(nodes, discovery.NewNode(arg))
+		}
+		cluster.UpdateNodes(nodes)
+	}
 
 	s, err := strategy.New(c.String("strategy"))
 	if err != nil {

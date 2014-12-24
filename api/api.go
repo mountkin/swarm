@@ -228,6 +228,16 @@ func proxyHijack(c *context, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DELETE /nodes/{:addr.*}
+func deleteNode(c *context, w http.ResponseWriter, r *http.Request) {
+	addr := mux.Vars(r)["addr"]
+	if addr == "" {
+		httpError(w, "addr is required", http.StatusBadRequest)
+		return
+	}
+	c.cluster.RemoveNode(addr)
+}
+
 // Default handler for methods not supported by clustering.
 func notImplementedHandler(c *context, w http.ResponseWriter, r *http.Request) {
 	httpError(w, "Not supported in clustering mode.", http.StatusNotImplemented)
@@ -299,6 +309,7 @@ func createRouter(c *context, enableCors bool) (*mux.Router, error) {
 		"DELETE": {
 			"/containers/{name:.*}": deleteContainer,
 			"/images/{name:.*}":     notImplementedHandler,
+			"/nodes/{addr:.*}":      deleteNode,
 		},
 		"OPTIONS": {
 			"": optionsHandler,
